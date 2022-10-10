@@ -1,0 +1,48 @@
+Source: libfuture-asyncawait-perl
+Maintainer: Debian Perl Group <pkg-perl-maintainers@lists.alioth.debian.org>
+Uploaders: gregor herrmann <gregoa@debian.org>
+Section: perl
+Testsuite: autopkgtest-pkg-perl
+Priority: optional
+Build-Depends: debhelper-compat (= 13),
+               libfuture-perl (>= 0.43) <!nocheck>,
+               libmodule-build-perl,
+               libobject-pad-perl <!nocheck>,
+               libsyntax-keyword-dynamically-perl <!nocheck>,
+               libsyntax-keyword-try-perl (>= 0.18) <!nocheck>,
+               libtest-memorygrowth-perl <!nocheck>,
+               libtest-refcount-perl (>= 0.09) <!nocheck>,
+               libxs-parse-keyword-perl <!nocheck>,
+               libxs-parse-sublike-perl,
+               perl-xs-dev,
+               perl:native
+Standards-Version: 4.6.0
+Vcs-Browser: https://salsa.debian.org/perl-team/modules/packages/libfuture-asyncawait-perl
+Vcs-Git: https://salsa.debian.org/perl-team/modules/packages/libfuture-asyncawait-perl.git
+Homepage: https://metacpan.org/release/Future-AsyncAwait
+Rules-Requires-Root: no
+
+Package: libfuture-asyncawait-perl
+Architecture: any
+Multi-Arch: same
+Depends: ${misc:Depends},
+         ${perl:Depends},
+         ${shlibs:Depends},
+         libfuture-perl (>= 0.43),
+         libxs-parse-keyword-perl,
+         libxs-parse-sublike-perl
+Description: deferred subroutine syntax for futures
+ Future::AsyncAwait provides syntax for deferring and resuming subroutines
+ while waiting for Futures to complete. This syntax aims to make code that
+ performs asynchronous operations using futures look neater and more
+ expressive than simply using then chaining and other techniques on the
+ futures themselves. It is also a similar syntax used by a number of other
+ languages; notably C# 5, EcmaScript 6, Python 3, and lately even Rust is
+ considering adding it.
+ .
+ The new syntax takes the form of two new keywords, async and await.
+ .
+ This module is still under active development. While it now seems relatively
+ stable enough for most use-cases and has received a lot of testing in a wide
+ variety of scenarios, there may still be the occasional case of memory leak
+ left in it, especially if still-pending futures are abandoned.

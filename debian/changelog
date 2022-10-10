@@ -1,0 +1,238 @@
+libfuture-asyncawait-perl (0.54-1) unstable; urgency=medium
+
+  * Import upstream version 0.54.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 29 Oct 2021 17:50:39 +0200
+
+libfuture-asyncawait-perl (0.53-1) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Remove constraints unnecessary since stretch:
+    + Build-Depends: Drop versioned constraint on perl.
+    + libfuture-asyncawait-perl: Drop versioned constraint on perl in Depends.
+
+  [ gregor herrmann ]
+  * Import upstream version 0.53.
+  * New test and runtime dependency: libxs-parse-keyword-perl.
+  * Declare compliance with Debian Policy 4.6.0.
+
+ -- gregor herrmann <gregoa@debian.org>  Wed, 29 Sep 2021 16:11:44 +0200
+
+libfuture-asyncawait-perl (0.49-1) unstable; urgency=medium
+
+  * Import upstream version 0.49.
+
+ -- gregor herrmann <gregoa@debian.org>  Thu, 25 Feb 2021 19:47:19 +0100
+
+libfuture-asyncawait-perl (0.48-1) unstable; urgency=medium
+
+  * Import upstream version 0.48.
+  * Update years of upstream and packaging copyright.
+  * Update versioned build dependencies.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 05 Feb 2021 00:36:39 +0100
+
+libfuture-asyncawait-perl (0.47-1) unstable; urgency=medium
+
+  * Import upstream version 0.47.
+
+ -- gregor herrmann <gregoa@debian.org>  Tue, 01 Dec 2020 18:04:38 +0100
+
+libfuture-asyncawait-perl (0.46-1) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Apply multi-arch hints.
+
+  [ gregor herrmann ]
+  * Import upstream version 0.46.
+  * Make (build) dependency on libfuture-perl versioned.
+  * Declare compliance with Debian Policy 4.5.1.
+  * Drop unneeded version constraints from (build) dependencies.
+
+ -- gregor herrmann <gregoa@debian.org>  Wed, 18 Nov 2020 20:43:35 +0100
+
+libfuture-asyncawait-perl (0.45-1) unstable; urgency=medium
+
+  * Import upstream version 0.45.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 24 Oct 2020 18:40:57 +0200
+
+libfuture-asyncawait-perl (0.44-1) unstable; urgency=medium
+
+  * Import upstream version 0.44.
+
+ -- gregor herrmann <gregoa@debian.org>  Mon, 12 Oct 2020 18:04:58 +0200
+
+libfuture-asyncawait-perl (0.43-1) unstable; urgency=medium
+
+  * Import upstream version 0.43.
+
+ -- gregor herrmann <gregoa@debian.org>  Tue, 07 Jul 2020 22:21:07 +0200
+
+libfuture-asyncawait-perl (0.42-1) unstable; urgency=medium
+
+  * Import upstream version 0.42.
+  * Update notice about module status in debian/control.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 03 Jul 2020 19:35:23 +0200
+
+libfuture-asyncawait-perl (0.41-1) unstable; urgency=medium
+
+  * Update 'DEB_BUILD_MAINT_OPTIONS = hardening=+bindnow' to '=+all'.
+  * Import upstream version 0.41.
+  * Update (build) dependencies.
+  * Drop debian/tests/pkg-perl/use-whitelist. The warnings are gone.
+  * Bump debhelper-compat to 13.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 20 Jun 2020 22:55:10 +0200
+
+libfuture-asyncawait-perl (0.40-1) unstable; urgency=medium
+
+  * Import upstream version 0.40.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 17 Apr 2020 19:58:36 +0200
+
+libfuture-asyncawait-perl (0.39-1) unstable; urgency=medium
+
+  * Import upstream version 0.39.
+  * Update (build) dependencies.
+  * Add debian/tests/pkg-perl/use-whitelist.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 05 Apr 2020 17:23:15 +0200
+
+libfuture-asyncawait-perl (0.37-1) unstable; urgency=medium
+
+  * Import upstream version 0.37.
+  * Declare compliance with Debian Policy 4.5.0.
+  * Set Rules-Requires-Root: no.
+
+ -- gregor herrmann <gregoa@debian.org>  Wed, 11 Mar 2020 21:36:34 +0100
+
+libfuture-asyncawait-perl (0.36-1) unstable; urgency=medium
+
+  * Import upstream version 0.36.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 19 Jan 2020 02:20:28 +0100
+
+libfuture-asyncawait-perl (0.35-1) unstable; urgency=medium
+
+  * Import upstream version 0.35.
+  * Update years of upstream and packaging copyright.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 11 Jan 2020 02:56:56 +0100
+
+libfuture-asyncawait-perl (0.34-2) unstable; urgency=medium
+
+  * Add libsyntax-keyword-dynamically-perl to Build-Depends to enable an
+    additional test.
+
+ -- gregor herrmann <gregoa@debian.org>  Thu, 26 Dec 2019 23:39:19 +0100
+
+libfuture-asyncawait-perl (0.34-1) unstable; urgency=medium
+
+  * Import upstream version 0.34.
+  * Update Build-Depends for cross builds.
+  * Declare compliance with Debian Policy 4.4.1.
+  * Remove obsolete fields Contact, Name from debian/upstream/metadata
+    (already present in machine-readable debian/copyright).
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 14 Dec 2019 02:01:51 +0100
+
+libfuture-asyncawait-perl (0.33-1) unstable; urgency=medium
+
+  * Import upstream version 0.33.
+
+ -- gregor herrmann <gregoa@debian.org>  Wed, 11 Sep 2019 22:06:38 +0200
+
+libfuture-asyncawait-perl (0.32-1) unstable; urgency=medium
+
+  * Import upstream versions 0.31, 0.32.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 07 Sep 2019 14:20:05 +0200
+
+libfuture-asyncawait-perl (0.30-1) unstable; urgency=medium
+
+  * Import upstream versions 0.29, 0.30.
+  * Make build dependency on libtest-refcount-perl versioned.
+  * Update warning in debian/control.
+  * Annotate test-only dependencies with <!nocheck>.
+  * Declare compliance with Debian Policy 4.4.0.
+
+ -- gregor herrmann <gregoa@debian.org>  Tue, 16 Jul 2019 18:44:19 -0300
+
+libfuture-asyncawait-perl (0.28-1) unstable; urgency=medium
+
+  * Team upload
+  * New upstream version 0.28
+  * Remove unnecessary version cap
+
+ -- Utkarsh Gupta <guptautkarsh2102@gmail.com>  Sat, 22 Jun 2019 01:22:55 +0530
+
+libfuture-asyncawait-perl (0.26-1) unstable; urgency=medium
+
+  * Import upstream version 0.26.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 04 May 2019 21:25:00 +0200
+
+libfuture-asyncawait-perl (0.22-1) unstable; urgency=medium
+
+  * Import upstream version 0.22.
+  * Bump debhelper-compat to 12.
+  * debian/watch: use uscan version 4.
+  * debian/control: update warning.
+    The module is considered a "beta version" by now.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 05 Apr 2019 14:22:37 +0200
+
+libfuture-asyncawait-perl (0.21-2) unstable; urgency=medium
+
+  * Add build dependency on libtest-memorygrowth-perl.
+
+ -- gregor herrmann <gregoa@debian.org>  Thu, 07 Feb 2019 16:49:57 +0100
+
+libfuture-asyncawait-perl (0.21-1) unstable; urgency=medium
+
+  * Import upstream version 0.21.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 03 Feb 2019 23:01:32 +0100
+
+libfuture-asyncawait-perl (0.20-1) unstable; urgency=medium
+
+  * Import upstream version 0.20.
+  * Add build dependency on libtest-refcount-perl.
+
+ -- gregor herrmann <gregoa@debian.org>  Thu, 17 Jan 2019 16:37:06 +0100
+
+libfuture-asyncawait-perl (0.19-1) unstable; urgency=medium
+
+  * Import upstream version 0.19.
+  * Update years of upstream and packaging copyright.
+  * Bump required perl version to 5.22.
+  * Declare compliance with Debian Policy 4.3.0.
+  * Bump debhelper compatibility level to 11.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 11 Jan 2019 20:17:43 +0100
+
+libfuture-asyncawait-perl (0.15-1) unstable; urgency=medium
+
+  [ Salvatore Bonaccorso ]
+  * Update Vcs-* headers for switch to salsa.debian.org
+
+  [ gregor herrmann ]
+  * New upstream release.
+  * Update (build) dependencies.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 18 Mar 2018 18:25:27 +0100
+
+libfuture-asyncawait-perl (0.13-2) unstable; urgency=medium
+
+  * Add libsyntax-keyword-try-perl to Build-Depends in order to enable an
+    additional test.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 21 Jan 2018 19:45:20 +0100
+
+libfuture-asyncawait-perl (0.13-1) unstable; urgency=medium
+
+  * Initial release (closes: #887800).
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 20 Jan 2018 02:29:06 +0100
