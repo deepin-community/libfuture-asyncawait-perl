@@ -3,7 +3,7 @@
 use v5.14;
 use warnings;
 
-use Test::More;
+use Test2::V0;
 
 use Future;
 
@@ -21,7 +21,7 @@ use Future::AsyncAwait;
 
    my $f = $func->();
 
-   isa_ok( $f, "Future", '$f' );
+   isa_ok( $f, [ "Future" ], '$f' );
 
    is( $want, "list", 'func saw list context' );
 
@@ -37,7 +37,7 @@ use Future::AsyncAwait;
 
    my $f = func_10();
 
-   isa_ok( $f, "Future", '$f' );
+   isa_ok( $f, [ "Future" ], '$f' );
 
    ok( $f->is_ready, '$f is immediate' );
    is( scalar $f->get, 10, '$f->get' );
@@ -51,10 +51,10 @@ use Future::AsyncAwait;
 
    my $f = func_list();
 
-   isa_ok( $f, "Future", '$f' );
+   isa_ok( $f, [ "Future" ], '$f' );
 
    ok( $f->is_ready, '$f is immediate' );
-   is_deeply( [ $f->get ], [ 1 .. 5 ], '$f->get' );
+   is( [ $f->get ], [ 1 .. 5 ], '$f->get' );
 }
 
 # immediate fail
@@ -66,7 +66,7 @@ use Future::AsyncAwait;
 
    my $f = func_die();
 
-   isa_ok( $f, "Future", '$f' );
+   isa_ok( $f, [ "Future" ], '$f' );
 
    ok( $f->is_ready, '$f is immediate' );
    is( scalar $f->failure, "Failure\n", '$f->failure' );
@@ -78,7 +78,33 @@ use Future::AsyncAwait;
 
    is( scalar @ret, 1, 'async sub returns 1 value in list context' ) or
       diag( "async sub returned <@ret>" );
-   isa_ok( shift @ret, "Future", 'Single result was a Future' );
+   isa_ok( shift @ret, [ "Future" ], 'Single result was a Future' );
+}
+
+# async sub can be declared in another package
+{
+   async sub Some::Other::Package::asub { return 123; }
+
+   ok( defined Some::Other::Package->can( "asub" ),
+      'async sub can be declared in another package' );
+
+   is( Some::Other::Package::asub->get, 123,
+      'async sub in another package runs OK' );
+}
+
+# unimport
+{
+   no Future::AsyncAwait;
+
+   sub async { return "normal function" }
+
+   is( async, "normal function", 'async() parses as a normal function call' );
+}
+
+# (related to) RT151046
+{
+   async sub forward_decl;
+   pass( 'Forward declaration of a sub permits async keyword' );
 }
 
 done_testing;

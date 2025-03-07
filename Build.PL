@@ -7,7 +7,7 @@ use Module::Build;
 use XS::Parse::Keyword::Builder;
 use XS::Parse::Sublike::Builder;
 
-my @extra_compiler_flags = qw( -std=c89 -Ihax );
+my @extra_compiler_flags = qw( -Ishare/include -Ihax );
 
 # MSWin32 needs NO_XSLOCKS to make longjmp work. I have no idea what this is
 # about, I just stole it from Scope::Escape
@@ -25,20 +25,22 @@ die "OS unsupported - threaded perl earlier than 5.22 (RT124351)"
 my $build = Module::Build->new(
    module_name => 'Future::AsyncAwait',
    requires => {
-      'Future' => '0.43',
+      'Future' => '0.50',
       'perl' => '5.016', # PL_keyword_plugin, pad_new(), CvDYNFILE, many tests fail on 5.14
       'XS::Parse::Keyword' => '0.13',
-      'XS::Parse::Sublike' => '0.10',
+      'XS::Parse::Sublike' => '0.31',
    },
    test_requires => {
       'Test::Future::Deferred' => 0,
-      'Test::More' => '0.88', # done_testing
-      'Test::Refcount' => '0.09',
+      'Test2::V0' => '0.000148',
    },
    configure_requires => {
       'Module::Build' => '0.4004', # test_requires
       'XS::Parse::Keyword::Builder' => '0.13',
-      'XS::Parse::Sublike::Builder' => '0.10',
+      'XS::Parse::Sublike::Builder' => '0.31',
+   },
+   share_dir => {
+      module => { 'Future::AsyncAwait' => [ 'share' ] },
    },
    license => 'perl',
    create_license => 1,
@@ -55,7 +57,8 @@ my $build = Module::Build->new(
 XS::Parse::Keyword::Builder->extend_module_build( $build );
 XS::Parse::Sublike::Builder->extend_module_build( $build );
 
-if( eval { require Devel::MAT::Dumper::Helper } ) {
+if( eval { require Devel::MAT::Dumper::Helper and
+            Devel::MAT::Dumper::Helper->VERSION( '0.44' ) } ) {
    Devel::MAT::Dumper::Helper->extend_module_build( $build );
 }
 

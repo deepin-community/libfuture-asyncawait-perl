@@ -4,7 +4,7 @@
       "Paul Evans <leonerd@leonerd.org.uk>"
    ],
    "dynamic_config" : 1,
-   "generated_by" : "Module::Build version 0.4231",
+   "generated_by" : "Module::Build version 0.4234",
    "license" : [
       "perl_5"
    ],
@@ -23,37 +23,41 @@
          "requires" : {
             "Module::Build" : "0.4004",
             "XS::Parse::Keyword::Builder" : "0.13",
-            "XS::Parse::Sublike::Builder" : "0.10"
+            "XS::Parse::Sublike::Builder" : "0.31"
          }
       },
       "runtime" : {
          "requires" : {
-            "Future" : "0.43",
+            "File::ShareDir" : "1.00",
+            "Future" : "0.50",
             "XS::Parse::Keyword" : "0.13",
-            "XS::Parse::Sublike" : "0.10",
+            "XS::Parse::Sublike" : "0.31",
             "perl" : "5.016"
          }
       },
       "test" : {
          "requires" : {
-            "Test::Future::Deferred" : "0",
-            "Test::More" : "0.88",
-            "Test::Refcount" : "0.09"
+            "Test2::V0" : "0.000148",
+            "Test::Future::Deferred" : "0"
          }
       }
    },
    "provides" : {
       "Future::AsyncAwait" : {
          "file" : "lib/Future/AsyncAwait.pm",
-         "version" : "0.54"
+         "version" : "0.70"
       },
       "Future::AsyncAwait::Awaitable" : {
          "file" : "lib/Future/AsyncAwait/Awaitable.pm",
-         "version" : "0.54"
+         "version" : "0.70"
+      },
+      "Future::AsyncAwait::ExtensionBuilder" : {
+         "file" : "lib/Future/AsyncAwait/ExtensionBuilder.pm",
+         "version" : "0.70"
       },
       "Test::Future::AsyncAwait::Awaitable" : {
          "file" : "lib/Test/Future/AsyncAwait/Awaitable.pm",
-         "version" : "0.54"
+         "version" : "0.70"
       }
    },
    "release_status" : "stable",
@@ -63,6 +67,6 @@
       ],
       "x_IRC" : "irc://irc.perl.org/#io-async"
    },
-   "version" : "0.54",
-   "x_serialization_backend" : "JSON::PP version 4.05"
+   "version" : "0.70",
+   "x_serialization_backend" : "JSON::PP version 4.16"
 }

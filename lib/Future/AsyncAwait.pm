@@ -1,9 +1,9 @@
 #  You may distribute under the terms of either the GNU General Public License
 #  or the Artistic License (the same terms as Perl itself)
 #
-#  (C) Paul Evans, 2016-2021 -- leonerd@leonerd.org.uk
+#  (C) Paul Evans, 2016-2024 -- leonerd@leonerd.org.uk
 
-package Future::AsyncAwait 0.54;
+package Future::AsyncAwait 0.70;
 
 use v5.14;
 use warnings;
@@ -13,18 +13,15 @@ use Carp;
 require XSLoader;
 XSLoader::load( __PACKAGE__, our $VERSION );
 
-require Future; Future->VERSION( '0.43' );
-
-if( !Future->can( "AWAIT_WAIT" ) ) {
-   no strict 'refs';
-   *{"Future::AWAIT_WAIT"} = \&Future::get;
-}
+require Future; Future->VERSION( '0.49' );
 
 =head1 NAME
 
 C<Future::AsyncAwait> - deferred subroutine syntax for futures
 
 =head1 SYNOPSIS
+
+=for highlighter language=perl
 
    use v5.14;
    use Future::AsyncAwait;
@@ -98,6 +95,21 @@ wanted.
       ...
       return await otherfunc();
    }
+
+I<Since version 0.69> this module also supports the C<async> keyword on
+lexical subroutine declarations when running on Perl version 5.18 or later.
+Note that the C<my> keyword has to come first:
+
+   use v5.18;
+
+   my async sub lexfunc { ... }
+
+   my $f = lexfunc(@args);
+
+I<Since version 0.70> this module supports using the C<async> keyword to
+declare named subs in other packages.
+
+   async sub Some::Other::Package::myfunc { ... }
 
 =head2 C<await>
 
@@ -319,6 +331,10 @@ feature if it is enabled:
       ...
    }
 
+I<Since version 0.55> any exceptions thrown by signature validation (because
+of too few or too many arguments being passed) are thrown synchronously, and
+do not result in a failed Future instance.
+
 =head2 Cancellation
 
 Cancelled futures cause a suspended C<async sub> to simply stop running.
@@ -474,35 +490,58 @@ async subs which await expressions:
       }
    }
 
+=head2 Syntax::Keyword::MultiSub
+
+As of L<Future::AsyncAwait> version 0.55 and L<Syntax::Keyword::MultiSub>
+version 0.02 a cross-module integration test asserts that the C<multi>
+modifier can be applied to C<async sub>.
+
+   use Future::AsyncAwait;
+   use Syntax::Keyword::MultiSub;
+
+   async multi sub f () { return "nothing"; }
+   async multi sub f ($key) { return await get_thing($key); }
+
 =cut
 
 sub import
 {
-   my $class = shift;
+   my $pkg = shift;
    my $caller = caller;
 
-   $class->import_into( $caller, @_ );
+   $pkg->import_into( $caller, @_ );
 }
+
+sub unimport
+{
+   my $pkg = shift;
+   my $caller = caller;
+
+   $pkg->unimport_into( $caller, @_ );
+}
+
+sub import_into   { shift->apply( sub { $^H{ $_[0] }++ },      @_ ) }
+sub unimport_into { shift->apply( sub { delete $^H{ $_[0] } }, @_ ) }
 
 my @EXPERIMENTAL = qw( cancel );
 
-sub import_into
+sub apply
 {
-   my $class = shift;
-   my $caller = shift;
+   my $pkg = shift;
+   my ( $cb, $caller, @syms ) = @_;
 
-   $^H{"Future::AsyncAwait/async"}++; # Just always turn this on
+   $cb->( "Future::AsyncAwait/async" ); # Just always turn this on
 
-   SYM: while( @_ ) {
-      my $sym = shift;
+   SYM: while( @syms ) {
+      my $sym = shift @syms;
 
-      $^H{"Future::AsyncAwait/future"} = shift, next if $sym eq "future_class";
+      $^H{"Future::AsyncAwait/future"} = shift @syms, next if $sym eq "future_class";
 
       foreach ( @EXPERIMENTAL ) {
-         $^H{"Future::AsyncAwait/experimental($_)"}++, next SYM if $sym eq ":experimental($_)";
+         $cb->( "Future::AsyncAwait/experimental($_)" ), next SYM if $sym eq ":experimental($_)";
       }
       if( $sym eq ":experimental" ) {
-         $^H{"Future::AsyncAwait/experimental($_)"}++ for @EXPERIMENTAL;
+         $cb->( "Future::AsyncAwait/experimental($_)" ) for @EXPERIMENTAL;
          next SYM;
       }
 
@@ -617,6 +656,28 @@ keep multiple items running concurrently:
    my @results = await fmap { func( shift ) }
       foreach    => [ ITEMS ],
       concurrent => 5;
+
+=item *
+
+The default arguments array (C<@_>) is not saved and restored by an C<await>
+call on perl versions before v5.24. On such older perls, the value seen in the
+C<@_> array after an await will not be the same as it was before.
+
+L<https://rt.cpan.org/Ticket/Display.html?id=130683>
+
+As a workaround, make sure to unpack the values out of it into regular lexical
+variables early on, before the the first C<await>. The values of these
+lexicals will be saved and restored as normal.
+
+   async sub f
+   {
+      my ($vars, $go, @here) = @_;
+      # do not make further use of @_ afterwards
+
+      await thing();
+
+      # $vars, $go, @here are all fine for use
+   }
 
 =back
 

@@ -1,7 +1,7 @@
 /*  You may distribute under the terms of either the GNU General Public License
  *  or the Artistic License (the same terms as Perl itself)
  *
- *  (C) Paul Evans, 2016-2021 -- leonerd@leonerd.org.uk
+ *  (C) Paul Evans, 2016-2022 -- leonerd@leonerd.org.uk
  */
 #define PERL_NO_GET_CONTEXT
 
@@ -12,6 +12,7 @@
 #include "AsyncAwait.h"
 
 #ifdef HAVE_DMD_HELPER
+#  define WANT_DMD_API_044
 #  include "DMD_helper.h"
 #endif
 
@@ -19,6 +20,7 @@
 #include "XSParseSublike.h"
 
 #include "perl-backcompat.c.inc"
+#include "PL_savetype_name.c.inc"
 
 #if !HAVE_PERL_VERSION(5, 24, 0)
   /* On perls before 5.24 we have to do some extra work to save the itervar
@@ -32,6 +34,10 @@
    *   https://rt.cpan.org/Ticket/Display.html?id=129202#txn-1843918
    */
 #  define HAVE_FUTURE_CHAIN_CANCEL
+#endif
+
+#if HAVE_PERL_VERSION(5, 26, 0)
+#  define HAVE_OP_ARGCHECK
 #endif
 
 #if HAVE_PERL_VERSION(5, 33, 7)
@@ -48,12 +54,9 @@
 #  include "cx_pusheval.c.inc"
 #endif
 
-#if !HAVE_PERL_VERSION(5, 22, 0)
-#  define CvPADLIST_set(cv, padlist)  (CvPADLIST(cv) = padlist)
-#endif
-
 #include "perl-additions.c.inc"
 #include "newOP_CUSTOM.c.inc"
+#include "cv_copy_flags.c.inc"
 
 /* Currently no version of perl makes this visible, so we always want it. Maybe
  * one day in the future we can make it version-dependent
@@ -142,6 +145,7 @@ typedef struct {
   SV **padslots;
 
   PMOP *curpm;           /* value of PL_curpm at suspend time */
+  AV *defav;             /* value of GvAV(PL_defgv) at suspend time */
 
   HV *modhookdata;
 } SuspendedState;
@@ -175,6 +179,83 @@ static void panic(char *fmt, ...)
 }
 
 /*
+ * Hook mechanism
+ */
+
+struct HookRegistration
+{
+  const struct AsyncAwaitHookFuncs *funcs;
+  void                             *data;
+};
+
+struct HookRegistrations
+{
+  struct HookRegistration *arr;
+  size_t count, size;
+};
+
+static struct HookRegistrations *S_registrations(pTHX_ bool add)
+{
+  SV *regsv = *hv_fetchs(PL_modglobal, "Future::AsyncAwait/registrations", GV_ADD);
+  if(!SvOK(regsv)) {
+    if(!add)
+      return NULL;
+
+    struct HookRegistrations *registrations;
+    Newx(registrations, 1, struct HookRegistrations);
+
+    registrations->count = 0;
+    registrations->size  = 4;
+    Newx(registrations->arr, registrations->size, struct HookRegistration);
+
+    sv_setuv(regsv, PTR2UV(registrations));
+  }
+
+  return INT2PTR(struct HookRegistrations *, SvUV(regsv));
+}
+#define registrations(add)  S_registrations(aTHX_ add)
+
+static void register_faa_hook(pTHX_ const struct AsyncAwaitHookFuncs *hookfuncs, void *hookdata)
+{
+  /* Currently no flags are recognised; complain if the caller requested any */
+  if(hookfuncs->flags)
+    croak("Unrecognised hookfuncs->flags value %08x", hookfuncs->flags);
+
+  struct HookRegistrations *regs = registrations(TRUE);
+
+  if(regs->count == regs->size) {
+    regs->size *= 2;
+    Renew(regs->arr, regs->size, struct HookRegistration);
+  }
+
+  regs->arr[regs->count].funcs = hookfuncs;
+  regs->arr[regs->count].data  = hookdata;
+  regs->count++;
+}
+
+#define RUN_HOOKS_FWD(func, ...) \
+  {                                                        \
+    int _hooki = 0;                                        \
+    while(_hooki < regs->count) {                          \
+      struct HookRegistration *reg = regs->arr + _hooki;   \
+      if(reg->funcs->func)                                 \
+        (*reg->funcs->func)(aTHX_ __VA_ARGS__, reg->data); \
+      _hooki++;                                            \
+    }                                                      \
+  }
+
+#define RUN_HOOKS_REV(func, ...) \
+  {                                                        \
+    int _hooki = regs->count;                              \
+    while(_hooki > 0) {                                    \
+      _hooki--;                                            \
+      struct HookRegistration *reg = regs->arr + _hooki;   \
+      if(reg->funcs->func)                                 \
+        (*reg->funcs->func)(aTHX_ __VA_ARGS__, reg->data); \
+    }                                                      \
+  }
+
+/*
  * Magic that we attach to suspended CVs, that contains state required to restore
  * them
  */
@@ -190,7 +271,7 @@ static MGVTBL vtbl_suspendedstate = {
 };
 
 #ifdef HAVE_DMD_HELPER
-static int dumpmagic_suspendedstate(pTHX_ const SV *sv, MAGIC *mg)
+static int dumpmagic_suspendedstate(pTHX_ DMDContext *ctx, const SV *sv, MAGIC *mg)
 {
   SuspendedState *state = (SuspendedState *)mg->mg_ptr;
   int ret = 0;
@@ -298,6 +379,9 @@ static int dumpmagic_suspendedstate(pTHX_ const SV *sv, MAGIC *mg)
         ret += DMD_ANNOTATE_SV(sv, state->padslots[i], "a suspended pad slot");
   }
 
+  if(state->defav)
+    ret += DMD_ANNOTATE_SV(sv, (SV *)state->defav, "the subroutine arguments AV");
+
   if(state->modhookdata)
     ret += DMD_ANNOTATE_SV(sv, (SV *)state->modhookdata, "the module hook data HV");
 
@@ -328,6 +412,7 @@ static SuspendedState *MY_suspendedstate_new(pTHX_ CV *cv)
   ret->frames = NULL;
   ret->padslots = NULL;
   ret->modhookdata = NULL;
+  ret->defav = NULL;
 
   sv_magicext((SV *)cv, NULL, PERL_MAGIC_ext, &vtbl_suspendedstate, (char *)ret, 0);
 
@@ -483,9 +568,21 @@ static int suspendedstate_free(pTHX_ SV *sv, MAGIC *mg)
     state->padlen = 0;
   }
 
+  if(state->defav) {
+    SvREFCNT_dec(state->defav);
+    state->defav = NULL;
+  }
+
   if(state->modhookdata) {
+    struct HookRegistrations *regs = registrations(FALSE);
+    /* New hooks first */
+    if(regs)
+      RUN_HOOKS_REV(free, (CV *)sv, state->modhookdata);
+
+    /* Legacy hooks after */
     SV **hookp = hv_fetchs(PL_modglobal, "Future::AsyncAwait/suspendhook", FALSE);
     if(hookp && SvOK(*hookp) && SvUV(*hookp)) {
+      warn("Invoking legacy Future::AsyncAwait suspendhook for FREE phase");
       SuspendHookFunc *hook = INT2PTR(SuspendHookFunc *, SvUV(*hookp));
       (*hook)(aTHX_ FAA_PHASE_FREE, (CV *)sv, state->modhookdata);
     }
@@ -980,155 +1077,6 @@ nosave:
   }
 }
 
-static bool padname_is_normal_lexical(PADNAME *pname)
-{
-  /* PAD slots without names are certainly not lexicals */
-  if(!pname ||
-#if !HAVE_PERL_VERSION(5, 20, 0)
-    /*  Perl before 5.20.0 could put PL_sv_undef in PADNAMEs */
-    pname == &PL_sv_undef || 
-#endif
-    !PadnameLEN(pname))
-    return FALSE;
-
-  /* Outer lexical captures are not lexicals */
-  if(PadnameOUTER(pname))
-    return FALSE;
-
-  /* Protosubs for closures are not lexicals */
-  if(PadnamePV(pname)[0] == '&')
-    return FALSE;
-
-  /* anything left is a normal lexical */
-  return TRUE;
-}
-
-#define cv_dup_for_suspend(orig)  MY_cv_dup_for_suspend(aTHX_ orig)
-static CV *MY_cv_dup_for_suspend(pTHX_ CV *orig)
-{
-  /* Parts of this code stolen from S_cv_clone() in pad.c
-   */
-  CV *new = MUTABLE_CV(newSV_type(SVt_PVCV));
-  CvFLAGS(new) = CvFLAGS(orig) & ~CVf_CVGV_RC;
-
-  CvFILE(new) = CvDYNFILE(orig) ? savepv(CvFILE(orig)) : CvFILE(orig);
-#if HAVE_PERL_VERSION(5, 18, 0)
-  if(CvNAMED(orig)) {
-    /* Perl core uses CvNAME_HEK_set() here, but that involves a call to a
-     * non-public function unshare_hek(). The latter is only needed in the
-     * case where an old value needs to be removed, but since we've only just
-     * created the CV we know it will be empty, so we can just set the field
-     * directly
-     */
-    ((XPVCV*)MUTABLE_PTR(SvANY(new)))->xcv_gv_u.xcv_hek = share_hek_hek(CvNAME_HEK(orig));
-    CvNAMED_on(new);
-  }
-  else
-#endif
-    CvGV_set(new, CvGV(orig));
-  CvSTASH_set(new, CvSTASH(orig));
-  {
-    OP_REFCNT_LOCK;
-    CvROOT(new) = OpREFCNT_inc(CvROOT(orig));
-    OP_REFCNT_UNLOCK;
-  }
-  CvSTART(new) = NULL; /* intentionally left NULL because caller should fill this in */
-  CvOUTSIDE_SEQ(new) = CvOUTSIDE_SEQ(orig);
-
-  /* No need to bother with SvPV slot because that's the prototype, and it's
-   * too late for that here
-   */
-
-  {
-    ENTER_with_name("cv_dup_for_suspend");
-
-    SAVESPTR(PL_compcv);
-    PL_compcv = new;
-
-    CvOUTSIDE(new) = MUTABLE_CV(SvREFCNT_inc(CvOUTSIDE(orig)));
-
-    SAVESPTR(PL_comppad_name);
-    PL_comppad_name = PadlistNAMES(CvPADLIST(orig));
-    CvPADLIST_set(new, pad_new(padnew_CLONE|padnew_SAVE));
-#if HAVE_PERL_VERSION(5, 22, 0)
-    CvPADLIST(new)->xpadl_id = CvPADLIST(orig)->xpadl_id;
-#endif
-
-    PADNAMELIST *padnames = PadlistNAMES(CvPADLIST(orig));
-    const PADOFFSET fnames = PadnamelistMAX(padnames);
-    const PADOFFSET fpad = AvFILLp(PadlistARRAY(CvPADLIST(orig))[1]);
-    SV **origpad = AvARRAY(PadlistARRAY(CvPADLIST(orig))[CvDEPTH(orig)]);
-
-#if !HAVE_PERL_VERSION(5, 18, 0)
-/* Perls before 5.18.0 didn't copy the padnameslist
- */
-    SvREFCNT_dec(PadlistNAMES(CvPADLIST(new)));
-    PadlistNAMES(CvPADLIST(new)) = (PADNAMELIST *)SvREFCNT_inc(PadlistNAMES(CvPADLIST(orig)));
-#endif
-
-    av_fill(PL_comppad, fpad);
-    PL_curpad = AvARRAY(PL_comppad);
-
-    PADNAME **pnames = PadnamelistARRAY(padnames);
-    PADOFFSET padix;
-    for(padix = 1; padix <= fpad; padix++) {
-      PADNAME *pname = (padix <= fnames) ? pnames[padix] : NULL;
-      SV *newval = NULL;
-
-      if(PadnameIsSTATE(pname))
-        newval = SvREFCNT_inc_NN(origpad[padix]);
-      else if(padname_is_normal_lexical(pname)) {
-        /* No point copying a normal lexical slot because the suspend logic is
-         * about to capture all the pad slots from the running CV (orig) and
-         * they'll be restored into this new one later by resume.
-         */
-        continue;
-      }
-      else if(pname && PadnamePV(pname)) {
-#if !HAVE_PERL_VERSION(5, 18, 0)
-        /* Before perl 5.18.0, inner anon subs didn't find the right CvOUTSIDE
-         * at runtime, so we'll have to patch them up here
-         */
-        CV *origproto;
-        if(PadnamePV(pname)[0] == '&' && 
-           CvOUTSIDE(origproto = MUTABLE_CV(origpad[padix])) == orig) {
-          /* quiet any "Variable $FOO is not available" warnings about lexicals
-           * yet to be introduced
-           */
-          ENTER_with_name("find_cv_outside");
-          SAVEINT(CvDEPTH(origproto));
-          CvDEPTH(origproto) = 1;
-
-          CV *newproto = cv_dup_for_suspend(origproto);
-          CvPADLIST_set(newproto, CvPADLIST(origproto));
-          CvSTART(newproto) = CvSTART(origproto);
-
-          SvREFCNT_dec(CvOUTSIDE(newproto));
-          CvOUTSIDE(newproto) = MUTABLE_CV(SvREFCNT_inc_simple_NN(new));
-
-          LEAVE_with_name("find_cv_outside");
-
-          newval = MUTABLE_SV(newproto);
-        }
-        else
-#endif
-        if(origpad[padix])
-          newval = SvREFCNT_inc_NN(origpad[padix]);
-      }
-      else {
-        newval = newSV(0);
-        SvPADTMP_on(newval);
-      }
-
-      PL_curpad[padix] = newval;
-    }
-
-    LEAVE_with_name("cv_dup_for_suspend");
-  }
-
-  return new;
-}
-
 #define suspendedstate_suspend(state, cv)  MY_suspendedstate_suspend(aTHX_ state, cv)
 static void MY_suspendedstate_suspend(pTHX_ SuspendedState *state, CV *cv)
 {
@@ -1208,6 +1156,28 @@ static void MY_suspendedstate_suspend(pTHX_ SuspendedState *state, CV *cv)
     state->curpm  = PL_curpm;
   else
     state->curpm = NULL;
+
+#if !HAVE_PERL_VERSION(5, 24, 0)
+  /* perls before v5.24 will crash if we try to do this at all */
+  if(0)
+#elif HAVE_PERL_VERSION(5, 36, 0)
+  /* perls 5.36 onwards have CvSIGNATURE; we don't need to bother doing this
+   * inside signatured subs */
+  if(!CvSIGNATURE(cv))
+#endif
+  /* on perl versions between those, just do it unconditionally */
+  {
+    state->defav = GvAV(PL_defgv); /* steal */
+
+    AV *av = GvAV(PL_defgv) = newAV();
+    AvREAL_off(av);
+
+    if(PAD_SVl(0) == (SV *)state->defav) {
+      /* Steal that one too */
+      SvREFCNT_dec(PAD_SVl(0));
+      PAD_SVl(0) = SvREFCNT_inc(av);
+    }
+  }
 
   dounwind(cxix);
 }
@@ -1516,6 +1486,15 @@ static void MY_suspendedstate_resume(pTHX_ SuspendedState *state, CV *cv)
 
   if(state->curpm)
     PL_curpm = state->curpm;
+
+  if(state->defav) {
+    SvREFCNT_dec(GvAV(PL_defgv));
+    SvREFCNT_dec(PAD_SVl(0));
+
+    GvAV(PL_defgv) = state->defav;
+    PAD_SVl(0) = SvREFCNT_inc((SV *)state->defav);
+    state->defav = NULL;
+  }
 }
 
 #define suspendedstate_cancel(state)  MY_suspendedstate_cancel(aTHX_ state)
@@ -1539,6 +1518,37 @@ static void MY_suspendedstate_cancel(pTHX_ SuspendedState *state)
       }
     }
   }
+}
+
+/*
+ * Pre-creation assistance
+ */
+
+enum {
+  PRECREATE_CANCEL,
+  PRECREATE_MODHOOKDATA,
+};
+
+#define get_precreate_padix()  S_get_precreate_padix(aTHX)
+PADOFFSET S_get_precreate_padix(pTHX)
+{
+  return SvUV(SvRV(*hv_fetchs(GvHV(PL_hintgv), "Future::AsyncAwait/*precreate_padix", 0)));
+}
+
+#define get_or_create_precreate_padix()  S_get_or_create_precreate_padix(aTHX)
+PADOFFSET S_get_or_create_precreate_padix(pTHX)
+{
+  SV *sv;
+  PADOFFSET padix = SvUV(sv = SvRV(*hv_fetchs(GvHV(PL_hintgv), "Future::AsyncAwait/*precreate_padix", 0)));
+  if(!padix) {
+    padix = pad_add_name_pvs("@(Future::AsyncAwait/precancel)", 0, NULL, NULL);
+    sv_setuv(sv, padix);
+
+    PADOFFSET p2 = pad_add_name_pvs("%(Future::AsyncAwait/premodhookdata)", 0, NULL, NULL);
+    assert(p2 == padix + PRECREATE_MODHOOKDATA);
+  }
+
+  return padix;
 }
 
 /*
@@ -1578,6 +1588,7 @@ static SV *MY_future_done_from_stack(pTHX_ SV *f, SV **mark)
   }
 
   if(f) {
+    assert(SvROK(f));
     *bottom = f;
     method  = "AWAIT_DONE";
   }
@@ -1612,6 +1623,7 @@ static SV *MY_future_fail(pTHX_ SV *f, SV *failure)
 
   PUSHMARK(SP);
   if(f) {
+    assert(SvROK(f));
     PUSHs(f);
     method = "AWAIT_FAIL";
   }
@@ -1637,6 +1649,8 @@ static SV *MY_future_fail(pTHX_ SV *f, SV *failure)
 #define future_new_from_proto(proto)  MY_future_new_from_proto(aTHX_ proto)
 static SV *MY_future_new_from_proto(pTHX_ SV *proto)
 {
+  assert(SvROK(proto));
+
   dSP;
 
   ENTER_with_name("future_new_from_proto");
@@ -1746,7 +1760,7 @@ static void MY_future_on_cancel(pTHX_ SV *f, SV *code)
   mPUSHs(code);
   PUTBACK;
 
-  call_method("on_cancel", G_VOID);
+  call_method("AWAIT_ON_CANCEL", G_VOID);
 
   FREETMPS;
   LEAVE_with_name("future_on_cancel");
@@ -1766,7 +1780,7 @@ static void MY_future_chain_on_cancel(pTHX_ SV *f1, SV *f2)
   PUSHs(f2);
   PUTBACK;
 
-  call_method("AWAIT_ON_CANCEL", G_VOID);
+  call_method("AWAIT_CHAIN_CANCEL", G_VOID);
 
   FREETMPS;
   LEAVE_with_name("future_chain_on_cancel");
@@ -1784,9 +1798,33 @@ static void MY_future_await_toplevel(pTHX_ SV *f)
   PUSHs(f);
   PUTBACK;
 
-  call_method("AWAIT_WAIT", GIMME);
+  call_method("AWAIT_WAIT", GIMME_V);
 
   LEAVE_with_name("future_await_toplevel");
+}
+
+/*
+ * API functions
+ */
+
+static HV *get_modhookdata(pTHX_ CV *cv, U32 flags, PADOFFSET precreate_padix)
+{
+  SuspendedState *state = suspendedstate_get(cv);
+
+  if(!state) {
+    if(!precreate_padix)
+      return NULL;
+
+    if(!(flags & FAA_MODHOOK_CREATE))
+      return NULL;
+
+    return (HV *)PAD_SVl(precreate_padix + PRECREATE_MODHOOKDATA);
+  }
+
+  if((flags & FAA_MODHOOK_CREATE) && !state->modhookdata)
+    state->modhookdata = newHV();
+
+  return state->modhookdata;
 }
 
 /*
@@ -1796,12 +1834,11 @@ static void MY_future_await_toplevel(pTHX_ SV *f)
 static XOP xop_enterasync;
 static OP *pp_enterasync(pTHX)
 {
-  PADOFFSET precancel_padix = PL_op->op_targ;
+  PADOFFSET precreate_padix = PL_op->op_targ;
 
-  if(precancel_padix) {
-    SV *sv = PAD_SVl(precancel_padix) = (SV *)newAV();
-    SvPADMY_on(sv);
-    save_clearsv(&PAD_SVl(precancel_padix));
+  if(precreate_padix) {
+    save_clearsv(&PAD_SVl(precreate_padix + PRECREATE_CANCEL));
+    save_clearsv(&PAD_SVl(precreate_padix + PRECREATE_MODHOOKDATA));
   }
 
   return PL_op->op_next;
@@ -1814,12 +1851,30 @@ static OP *pp_leaveasync(pTHX)
   dMARK;
 
   SV *f = NULL;
-  SV *ret;
+  SV *ret = NULL;
 
   SuspendedState *state = suspendedstate_get(find_runcv(0));
   if(state && state->returning_future) {
     f = state->returning_future;
     state->returning_future = NULL;
+  }
+
+  if(f && !SvROK(f)) {
+    /* async sub was abandoned. We just have to tidy up a bit and finish */
+
+    if(SvTRUE(ERRSV)) {
+      /* This error will otherwise go unreported; best we can do is warn() it */
+      CV *curcv = find_runcv(0);
+      GV *gv = CvGV(curcv);
+      if(!CvANON(curcv))
+        warn("Abandoned async sub %s::%s failed: %" SVf,
+          HvNAME(GvSTASH(gv)), GvNAME(gv), SVfARG(ERRSV));
+      else
+        warn("Abandoned async sub CODE(0x%p) in package %s failed: %" SVf,
+          curcv, HvNAME(GvSTASH(gv)), SVfARG(ERRSV));
+    }
+
+    goto abort;
   }
 
   if(SvTRUE(ERRSV)) {
@@ -1829,18 +1884,22 @@ static OP *pp_leaveasync(pTHX)
     ret = future_done_from_stack(f, mark);
   }
 
+  SPAGAIN;
+
+abort: ; /* statement to keep C compilers happy */
   PERL_CONTEXT *cx = CX_CUR();
 
-  SPAGAIN;
   SV **oldsp = PL_stack_base + cx->blk_oldsp;
 
   /* Pop extraneous stack items */
   while(SP > oldsp)
     POPs;
 
-  EXTEND(SP, 1);
-  mPUSHs(ret);
-  PUTBACK;
+  if(ret) {
+    EXTEND(SP, 1);
+    mPUSHs(ret);
+    PUTBACK;
+  }
 
   if(f)
     SvREFCNT_dec(f);
@@ -1864,7 +1923,9 @@ static OP *pp_await(pTHX)
   CV *origcv = curcv;
   bool defer_mortal_curcv = FALSE;
 
-  AV *precancel = PL_op->op_targ ? (AV *)PAD_SVl(PL_op->op_targ) : NULL;
+  PADOFFSET precreate_padix = PL_op->op_targ;
+  /* Must fetch precancel AV now, before any pad fiddling or cv copy */
+  AV *precancel = precreate_padix ? (AV *)PAD_SVl(precreate_padix + PRECREATE_CANCEL) : NULL;
 
   SuspendedState *state = suspendedstate_get(curcv);
 
@@ -1875,12 +1936,19 @@ static OP *pp_await(pTHX)
     return docatch(pp_await);
   }
 
+  struct HookRegistrations *regs = registrations(FALSE);
+
   if(state && state->curcop)
     PL_curcop = state->curcop;
 
   TRACEPRINT("ENTER await curcv=%p [%s:%d]\n", curcv, CopFILE(PL_curcop), CopLINE(PL_curcop));
+  if(state)
+    TRACEPRINT(" (state=%p/{awaiting_future=%p, returning_future=%p})\n",
+      state, state->awaiting_future, state->returning_future);
+  else
+    TRACEPRINT(" (no state)\n");
 
-  if(state && state->awaiting_future) {
+  if(state) {
     if(!SvROK(state->returning_future) || future_is_cancelled(state->returning_future)) {
       if(!SvROK(state->returning_future)) {
         GV *gv = CvGV(curcv);
@@ -1898,7 +1966,9 @@ static OP *pp_await(pTHX)
       PUTBACK;
       return PL_ppaddr[OP_RETURN](aTHX);
     }
+  }
 
+  if(state && state->awaiting_future) {
     I32 orig_height;
 
     TRACEPRINT("  RESUME\n");
@@ -1923,9 +1993,11 @@ static OP *pp_await(pTHX)
       POPMARK;
     PUSHMARK(SP);
 
+    /* Legacy ones first */
     {
       SV **hookp = hv_fetchs(PL_modglobal, "Future::AsyncAwait/suspendhook", FALSE);
       if(hookp && SvOK(*hookp) && SvUV(*hookp)) {
+        warn("Invoking legacy Future::AsyncAwait suspendhook for PRERESUME phase");
         SuspendHookFunc *hook = INT2PTR(SuspendHookFunc *, SvUV(*hookp));
         if(!state->modhookdata)
           state->modhookdata = newHV();
@@ -1933,7 +2005,15 @@ static OP *pp_await(pTHX)
         (*hook)(aTHX_ FAA_PHASE_PRERESUME, curcv, state->modhookdata);
       }
     }
+
+    /* New ones after */
+    if(regs)
+      RUN_HOOKS_REV(pre_resume, curcv, state->modhookdata);
+
     suspendedstate_resume(state, curcv);
+
+    if(regs)
+      RUN_HOOKS_FWD(post_resume, curcv, state->modhookdata);
 
 #ifdef DEBUG_SHOW_STACKS
     debug_showstack("Stack after resume");
@@ -1969,8 +2049,26 @@ static OP *pp_await(pTHX)
 
   if(!state) {
     /* Clone the CV and then attach suspendedstate magic to it */
-    curcv = cv_dup_for_suspend(curcv);
+
+    /* No point copying a normal lexical slot because the suspend logic is
+     * about to capture all the pad slots from the running CV (orig) and
+     * they'll be restored into this new one later by resume.
+     */
+    CV *runcv = curcv;
+    curcv = cv_copy_flags(runcv, CV_COPY_NULL_LEXICALS);
     state = suspendedstate_new(curcv);
+
+    HV *premodhookdata = precreate_padix ? (HV *)PAD_SVl(precreate_padix + PRECREATE_MODHOOKDATA) : NULL;
+    if(premodhookdata) {
+      state->modhookdata = premodhookdata;
+      PAD_SVl(precreate_padix + PRECREATE_MODHOOKDATA) = NULL; /* steal it */
+    }
+
+    if(regs) {
+      if(!state->modhookdata)
+        state->modhookdata = newHV();
+      RUN_HOOKS_FWD(post_cv_copy, runcv, curcv, state->modhookdata);
+    }
 
     TRACEPRINT("  SUSPEND cloned CV->%p\n", curcv);
     defer_mortal_curcv = TRUE;
@@ -1981,10 +2079,20 @@ static OP *pp_await(pTHX)
 
   state->curcop = PL_curcop;
 
+  if(regs)
+    RUN_HOOKS_REV(pre_suspend, curcv, state->modhookdata);
+
   suspendedstate_suspend(state, origcv);
+
+  /* New ones first */
+  if(regs)
+    RUN_HOOKS_FWD(post_suspend, curcv, state->modhookdata);
+
+  /* Legacy ones after */
   {
     SV **hookp = hv_fetchs(PL_modglobal, "Future::AsyncAwait/suspendhook", FALSE);
     if(hookp && SvOK(*hookp) && SvUV(*hookp)) {
+      warn("Invoking legacy Future::AsyncAwait suspendhook for POSTSUSPEND phase");
       SuspendHookFunc *hook = INT2PTR(SuspendHookFunc *, SvUV(*hookp));
         if(!state->modhookdata)
           state->modhookdata = newHV();
@@ -2009,6 +2117,7 @@ static OP *pp_await(pTHX)
 
   if(!state->returning_future) {
     state->returning_future = future_new_from_proto(f);
+
     if(precancel) {
       I32 i;
       for(i = 0; i < av_count(precancel); i++)
@@ -2037,10 +2146,11 @@ static OP *pp_await(pTHX)
 
 #ifdef HAVE_FUTURE_CHAIN_CANCEL
   future_chain_on_cancel(state->returning_future, state->awaiting_future);
-#endif
 
   if(!SvROK(state->returning_future))
     panic("ARGH we lost state->returning_future for curcv=%p\n", curcv);
+#endif
+
   if(!SvROK(state->awaiting_future))
     panic("ARGH we lost state->awaiting_future for curcv=%p\n", curcv);
 
@@ -2060,7 +2170,8 @@ static OP *pp_pushcancel(pTHX)
     future_on_cancel(state->returning_future, newRV_noinc((SV *)on_cancel));
   }
   else {
-    AV *precancel = (AV *)PAD_SVl(PL_op->op_targ);
+    PADOFFSET precreate_padix = PL_op->op_targ;
+    AV *precancel = (AV *)PAD_SVl(precreate_padix + PRECREATE_CANCEL);
     av_push(precancel, newRV_noinc((SV *)on_cancel));
   }
 
@@ -2156,64 +2267,105 @@ static void parse_post_blockstart(pTHX_ struct XSParseSublikeContext *ctx, void 
    */
   hv_stores(GvHV(PL_hintgv), "Future::AsyncAwait/PL_compcv", newSVuv(PTR2UV(PL_compcv)));
 
-  hv_stores(GvHV(PL_hintgv), "Future::AsyncAwait/*precancel_padix", newRV_noinc(newSVuv(0)));
+  hv_stores(GvHV(PL_hintgv), "Future::AsyncAwait/*precreate_padix", newRV_noinc(newSVuv(0)));
 }
 
 static void parse_pre_blockend(pTHX_ struct XSParseSublikeContext *ctx, void *hookdata)
 {
-  /* body might be NULL if an error happened; we check that below so for now
-   * just be defensive
+  /* body might be NULL if an error happened, or if this was a bodyless
+   * prototype or required method declaration
    */
-  if(ctx->body) {
-    COP *last_cop = PL_curcop;
-    check_optree(aTHX_ ctx->body, NO_FORBID, &last_cop);
+  if(!ctx->body)
+    return;
+
+  COP *last_cop = PL_curcop;
+  check_optree(aTHX_ ctx->body, NO_FORBID, &last_cop);
+
+#ifdef HAVE_OP_ARGCHECK
+  /* If the sub body is using signatures, we want to pull the OP_ARGCHECK
+   * outside the try block. This has two advantages:
+   *   1. arity checks appear synchronous from the perspective of the caller;
+   *      immediate exceptions rather than failed Futures
+   *   2. it makes Syntax::Keyword::MultiSub able to handle `async multi sub`
+   */
+  OP *argcheckop = NULL;
+  if(ctx->body->op_type == OP_LINESEQ) {
+    OP *lineseq = ctx->body;
+    OP *o = cLISTOPx(lineseq)->op_first;
+    /* OP_ARGCHECK is often found inside a second inner nested OP_LINESEQ that
+     * was op_null'ed out
+     */
+    if(o->op_type == OP_NULL && o->op_flags & OPf_KIDS &&
+        cUNOPo->op_first->op_type == OP_LINESEQ) {
+      lineseq = cUNOPo->op_first;
+      o = cLISTOPx(lineseq)->op_first;
+    }
+    if(o->op_type == OP_NEXTSTATE &&
+        OpSIBLING(o)->op_type == OP_ARGCHECK) {
+      /* Splice out the NEXTSTATE+ARGCHECK ops */
+      argcheckop = o; /* technically actually the NEXTSTATE before it */
+
+      o = OpSIBLING(OpSIBLING(o));
+      OpMORESIB_set(OpSIBLING(argcheckop), NULL);
+
+      cLISTOPx(lineseq)->op_first = o;
+    }
   }
+#endif
 
   /* turn block into
    *    NEXTSTATE; PUSHMARK; eval { BLOCK }; LEAVEASYNC
    */
 
-  OP *op = newSTATEOP(0, NULL, NULL);
+  OP *body = newSTATEOP(0, NULL, NULL);
 
-  PADOFFSET precancel_padix = SvUV(SvRV(*hv_fetchs(GvHV(PL_hintgv), "Future::AsyncAwait/*precancel_padix", 0)));
-  if(precancel_padix) {
+  PADOFFSET precreate_padix = get_precreate_padix();
+  if(precreate_padix) {
     OP *enterasync;
-    op = op_append_elem(OP_LINESEQ, op,
+    body = op_append_elem(OP_LINESEQ, body,
       enterasync = newOP_CUSTOM(&pp_enterasync, 0));
 
-    enterasync->op_targ = precancel_padix;
+    enterasync->op_targ = precreate_padix;
   }
 
-  op = op_append_elem(OP_LINESEQ, op, newOP(OP_PUSHMARK, 0));
+  body = op_append_elem(OP_LINESEQ, body, newOP(OP_PUSHMARK, 0));
 
   OP *try;
-  op = op_append_elem(OP_LINESEQ, op, try = newUNOP(OP_ENTERTRY, 0, ctx->body));
+  body = op_append_elem(OP_LINESEQ, body, try = newUNOP(OP_ENTERTRY, 0, ctx->body));
   op_contextualize(try, G_ARRAY);
 
-  op = op_append_elem(OP_LINESEQ, op, newOP_CUSTOM(&pp_leaveasync, OPf_WANT_SCALAR));
-  ctx->body = op;
+  body = op_append_elem(OP_LINESEQ, body, newOP_CUSTOM(&pp_leaveasync, OPf_WANT_SCALAR));
+
+#ifdef HAVE_OP_ARGCHECK
+  if(argcheckop) {
+    assert(body->op_type == OP_LINESEQ);
+    /* Splice the argcheckop back into the start of the lineseq */
+    OP *o = argcheckop;
+    while(OpSIBLING(o))
+      o = OpSIBLING(o);
+
+    OpMORESIB_set(o, cLISTOPx(body)->op_first);
+    cLISTOPx(body)->op_first = argcheckop;
+  }
+#endif
+
+  ctx->body = body;
 }
 
 static void parse_post_newcv(pTHX_ struct XSParseSublikeContext *ctx, void *hookdata)
 {
-  if(CvLVALUE(ctx->cv))
+  if(ctx->cv && CvLVALUE(ctx->cv))
     warn("Pointless use of :lvalue on async sub");
 }
 
-static struct XSParseSublikeHooks parse_asyncsub_hooks = {
+static struct XSParseSublikeHooks hooks_async = {
+  .ver            = XSPARSESUBLIKE_ABI_VERSION,
+  .permit_hintkey = "Future::AsyncAwait/async",
+  .flags = XS_PARSE_SUBLIKE_FLAG_PREFIX|XS_PARSE_SUBLIKE_FLAG_BODY_OPTIONAL|XS_PARSE_SUBLIKE_FLAG_ALLOW_PKGNAME,
+
   .post_blockstart = parse_post_blockstart,
   .pre_blockend    = parse_pre_blockend,
   .post_newcv      = parse_post_newcv,
-};
-
-static int parse_async(pTHX_ OP **op_ptr, void *hookdata)
-{
-  return xs_parse_sublike_any(&parse_asyncsub_hooks, NULL, op_ptr);
-}
-
-static struct XSParseKeywordHooks hooks_async = {
-  .permit_hintkey = "Future::AsyncAwait/async",
-  .parse = &parse_async,
 };
 
 static void check_await(pTHX_ void *hookdata)
@@ -2238,9 +2390,7 @@ static int build_await(pTHX_ OP **out, XSParseKeywordPiece *arg0, void *hookdata
   else {
     *out = newUNOP_CUSTOM(&pp_await, 0, expr);
 
-    PADOFFSET precancel_padix = SvUV(SvRV(*hv_fetchs(GvHV(PL_hintgv), "Future::AsyncAwait/*precancel_padix", 0)));
-    if(precancel_padix)
-      (*out)->op_targ = precancel_padix;
+    (*out)->op_targ = get_precreate_padix();
   }
 
   return KEYWORD_PLUGIN_EXPR;
@@ -2277,14 +2427,7 @@ static int build_cancel(pTHX_ OP **out, XSParseKeywordPiece *arg0, void *hookdat
   *out = op_prepend_elem(OP_LINESEQ,
     (pushcancel = newSVOP_CUSTOM(&pp_pushcancel, 0, (SV *)on_cancel)), NULL);
 
-  SV *sv;
-  PADOFFSET precancel_padix = SvUV(sv = SvRV(*hv_fetchs(GvHV(PL_hintgv), "Future::AsyncAwait/*precancel_padix", 0)));
-  if(!precancel_padix) {
-    precancel_padix = pad_add_name_pvs("@(Future::AsyncAwait/precancel)", 0, NULL, NULL);
-    sv_setuv(sv, precancel_padix);
-  }
-
-  pushcancel->op_targ = precancel_padix;
+  pushcancel->op_targ = get_or_create_precreate_padix();
 
   return KEYWORD_PLUGIN_STMT;
 }
@@ -2295,6 +2438,41 @@ static struct XSParseKeywordHooks hooks_cancel = {
   .piece1 = XPK_ANONSUB,
   .build1 = &build_cancel,
 };
+
+/*
+ * Back-compat support
+ */
+
+struct AsyncAwaitHookFuncs_v1
+{
+  U32 flags;
+  void (*post_cv_copy)(pTHX_ CV *runcv, CV *cv, HV *modhookdata, void *hookdata);
+  /* no pre_suspend */
+  void (*post_suspend)(pTHX_ CV *cv, HV *modhookdata, void *hookdata);
+  void (*pre_resume)  (pTHX_ CV *cv, HV *modhookdata, void *hookdata);
+  /* no post_resume */
+  void (*free)        (pTHX_ CV *cv, HV *modhookdata, void *hookdata);
+};
+
+static void register_faa_hook_v1(pTHX_ const struct AsyncAwaitHookFuncs_v1 *hookfuncs_v1, void *hookdata)
+{
+  /* No flags are recognised; complain if the caller requested any */
+  if(hookfuncs_v1->flags)
+    croak("Unrecognised hookfuncs->flags value %08x", hookfuncs_v1->flags);
+
+  struct AsyncAwaitHookFuncs *hookfuncs;
+  Newx(hookfuncs, 1, struct AsyncAwaitHookFuncs);
+
+  hookfuncs->flags = 0;
+  hookfuncs->post_cv_copy = hookfuncs_v1->post_cv_copy;
+  hookfuncs->pre_suspend  = NULL;
+  hookfuncs->post_suspend = hookfuncs_v1->post_suspend;
+  hookfuncs->pre_resume   = hookfuncs_v1->pre_resume;
+  hookfuncs->post_resume  = NULL;
+  hookfuncs->free         = hookfuncs_v1->free;
+
+  register_faa_hook(aTHX_ hookfuncs, hookdata);
+}
 
 MODULE = Future::AsyncAwait    PACKAGE = Future::AsyncAwait
 
@@ -2327,15 +2505,27 @@ BOOT:
   Perl_custom_op_register(aTHX_ &pp_pushcancel, &xop_pushcancel);
 
   boot_xs_parse_keyword(0.13);
+  boot_xs_parse_sublike(0.31);
 
-  register_xs_parse_keyword("async", &hooks_async, NULL);
+  register_xs_parse_sublike("async", &hooks_async, NULL);
+
   register_xs_parse_keyword("await", &hooks_await, NULL);
   register_xs_parse_keyword("CANCEL", &hooks_cancel, NULL);
 #ifdef HAVE_DMD_HELPER
   DMD_SET_MAGIC_HELPER(&vtbl_suspendedstate, dumpmagic_suspendedstate);
 #endif
 
-  boot_xs_parse_sublike(0.10);
+  sv_setiv(*hv_fetchs(PL_modglobal, "Future::AsyncAwait/ABIVERSION_MIN", 1), 1);
+  sv_setiv(*hv_fetchs(PL_modglobal, "Future::AsyncAwait/ABIVERSION_MAX", 1), FUTURE_ASYNCAWAIT_ABI_VERSION);
+
+  sv_setiv(*hv_fetchs(PL_modglobal, "Future::AsyncAwait/register()@2", 1),
+    PTR2UV(&register_faa_hook));
+  sv_setiv(*hv_fetchs(PL_modglobal, "Future::AsyncAwait/register()@1", 1),
+    PTR2UV(&register_faa_hook_v1));
+  sv_setiv(*hv_fetchs(PL_modglobal, "Future::AsyncAwait/get_modhookdata()@1", 1),
+    PTR2UV(&get_modhookdata));
+  sv_setiv(*hv_fetchs(PL_modglobal, "Future::AsyncAwait/make_precreate_padix()@1", 1),
+    PTR2UV(&S_get_or_create_precreate_padix));
 
   {
     AV *run_on_loaded = NULL;

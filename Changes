@@ -1,5 +1,130 @@
 Revision history for Future-AsyncAwait
 
+0.70    2024-12-20
+        [CHANGES]
+         * Allow `async sub` declarations that put named functions into other
+           packages
+         * Update to latest copies of shared t/80*.t cross-module test files
+
+0.69    2024-09-18
+        [CHANGES]
+         * Support asynchonous lexical subs declared with `my async sub`
+
+0.68    2024-08-29
+        [BUGFIXES]
+         * Updated to latest hax/ support files: #ifdef around SAVEt_LONG for
+           perl 5.41.3 which removed it
+
+0.67    2024-08-19
+        [CHANGES]
+         * Use `File::ShareDir` for storing .h include file, rather than
+           storing the contents in the `__DATA__` section of the build helper
+         * Updates for XS::Parse::Sublike v0.23:
+            + add .ver hooks struct field
+         * Pod style updates
+
+        [BUGFIXES]
+         * Permit `async` keyword on bodyless sub or method declarations
+           (RT151046)
+
+0.66    2023-09-08
+        [CHANGES]
+         * Add a unit test to check that `async method` works on core perl
+           class syntax
+         * Remember to implement `sub unimport` so that `no Future::AsyncAwait`
+           works
+
+        [BUGFIXES]
+         * Provide a permit_hintkey to keep XPS happy
+
+0.65    2023-03-17
+        [CHANGES]
+         * More specific unit-testing of the croak location when testing
+           `AWAIT_GET` (related to RT145249)
+         * Swap all unit tests from `Test::More` to `Test2::V0`
+         * Avoids test_requires on `Test::Refcount` or `Test::Fatal`
+
+        [BUGFIXES]
+         * A more robust handling of defav during suspend/resume to try not to
+           upset `perl -d` (RT146246)
+
+0.64    2023-02-14
+        [CHANGES]
+         * Define ABI version 2, which adds pre_suspend and post_resume phase
+           hooks
+
+0.63    2023-02-12
+        [CHANGES]
+         * Added various bits of API to extension modules using modhookdata more
+           flexibly, including by pre-allocation before the first `await`
+         * Legacy hook API now prints warnings about its deprecation and
+           impending removal
+
+        [BUGFIXES]
+         * Bleadperl no longer supports `GIMME`, in any case should use
+           `GIMME_V`
+         * Fix memory leak around pre-allocated cancel AV
+
+0.62    2022-12-20
+        [BUGFIXES]
+         * Save/restore the value of the @_ array; does not work on perls
+           before 5.24 for reasons unknown (RT130683)
+         * Updated hax/ files to avoid a build warning on current bleadperl
+
+0.61    2022-11-21
+        [BUGFIXES]
+         * Fix for some C compilers which get upset about variable
+           declarations having goto labels
+
+0.60    2022-11-21
+        [CHANGES]
+         * Added entirely new extension API based on structs of hook functions
+           registered with the module; similar to Object::Pad and XS::Parse::*
+         * Provide Future::AsyncAwait::ExtensionBuilder in a similar fashion
+           to above
+         * Added some more internal assert() and TRACEPRINT calls for
+           debugging
+
+        [BUGFIXES]
+         * Don't crash if an async sub's returning future is abandoned outside
+           of an await state
+
+0.59    2022-09-23
+        [BUGFIXES]
+         * Fix broken Future->get method resolution on recent
+           Future + Future::XS experiments
+         * Fix hax/docatch.c.inc for "NULL OP IN RUN" messages
+         * Make t/31destroy.t less fragile in the case of non-HASH Future
+           instances
+         * Back-compat to perl 5.16 by passing `flags` arg to `cv_copy_flags`
+           (RT143742)
+
+0.58    2022-04-29
+        [BUGFIXES]
+         * Fix memory leak with long-running futures and on_cancel (RT142222)
+         * Copy SVs with SvPADTMP in case of running code, or folded constants
+           that erroneously end up with that flag anyway (RT142468)
+
+0.57    2022-03-16
+        [CHANGES]
+         * Updates for Devel::MAT::Dumper v0.44
+         * Updates to bundled hax/ files
+
+0.56    2022-01-26
+        [CHANGES]
+         * Updated Awaitable API definition for AWAIT_ON_CANCEL
+         * Actually use AWAIT_ON_CANCEL properly (RT137723)
+         * Document the interaction of `multi async sub`
+
+0.55    2021-12-16
+        [CHANGES]
+         * Updated for XS::Parse::Keyword 0.15
+         * Hoist an OP_ARGCHECK to outside the ENTERTRY block if present, so
+           that signature validation happens synchronously
+         * Support and unit-test Syntax::Keyword::MultiSub
+         * No longer set `-std=c89` compile flag now that core perl requires
+           C99 anyway
+
 0.54    2021-10-26
         [CHANGES]
          * Add unit-test for await from within perl 5.35.5's multi-variable

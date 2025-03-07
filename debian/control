@@ -4,19 +4,28 @@ Uploaders: gregor herrmann <gregoa@debian.org>
 Section: perl
 Testsuite: autopkgtest-pkg-perl
 Priority: optional
+# libdevel-mat-perl has build issues, cf. #1026046
+# libdevel-mat-perl <!nocheck>,
+#               libdevel-mat-dumper-perl,
+# don't add
+#               libobject-pad-perl <!nocheck>,
+#               libsyntax-keyword-dynamically-perl <!nocheck>,
+#               libsyntax-keyword-match-perl <!nocheck>,
+#               libsyntax-keyword-multisub-perl <!nocheck>,
+#               libsyntax-keyword-try-perl (>= 0.18) <!nocheck>,
+# to avoid circular build dependencies
 Build-Depends: debhelper-compat (= 13),
-               libfuture-perl (>= 0.43) <!nocheck>,
+               libfile-sharedir-perl <!nocheck>,
+               libfuture-perl (>= 0.50) <!nocheck>,
+               libio-async-perl <!nocheck>,
                libmodule-build-perl,
-               libobject-pad-perl <!nocheck>,
-               libsyntax-keyword-dynamically-perl <!nocheck>,
-               libsyntax-keyword-try-perl (>= 0.18) <!nocheck>,
-               libtest-memorygrowth-perl <!nocheck>,
-               libtest-refcount-perl (>= 0.09) <!nocheck>,
-               libxs-parse-keyword-perl <!nocheck>,
-               libxs-parse-sublike-perl,
+               librole-tiny-perl <!nocheck>,
+               libtest2-suite-perl (>= 0.000148) <!nocheck>,
+               libxs-parse-keyword-perl,
+               libxs-parse-sublike-perl (>= 0.31),
                perl-xs-dev,
                perl:native
-Standards-Version: 4.6.0
+Standards-Version: 4.7.0
 Vcs-Browser: https://salsa.debian.org/perl-team/modules/packages/libfuture-asyncawait-perl
 Vcs-Git: https://salsa.debian.org/perl-team/modules/packages/libfuture-asyncawait-perl.git
 Homepage: https://metacpan.org/release/Future-AsyncAwait
@@ -24,13 +33,14 @@ Rules-Requires-Root: no
 
 Package: libfuture-asyncawait-perl
 Architecture: any
-Multi-Arch: same
 Depends: ${misc:Depends},
          ${perl:Depends},
          ${shlibs:Depends},
-         libfuture-perl (>= 0.43),
+         libfile-sharedir-perl,
+         libfuture-perl (>= 0.50),
+         libtest2-suite-perl (>= 0.000148),
          libxs-parse-keyword-perl,
-         libxs-parse-sublike-perl
+         libxs-parse-sublike-perl (>= 0.31)
 Description: deferred subroutine syntax for futures
  Future::AsyncAwait provides syntax for deferring and resuming subroutines
  while waiting for Futures to complete. This syntax aims to make code that
