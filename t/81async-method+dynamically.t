@@ -1,38 +1,25 @@
 #!/usr/bin/perl
 
-use v5.14;
+use v5.18;
 use warnings;
 
-use Test::More;
+use Test2::V0;
 
-BEGIN {
-   plan skip_all => "Future is not available"
-      unless eval { require Future };
-   plan skip_all => "Future::AsyncAwait >= 0.40 is not available"
-      unless eval { require Future::AsyncAwait;
-                    Future::AsyncAwait->VERSION( '0.40' ) };
-   plan skip_all => "Object::Pad >= 0.15 is not available"
-      unless eval { require Object::Pad;
-                    Object::Pad->VERSION( '0.15' ) };
-   plan skip_all => "Syntax::Keyword::Dynamically >= 0.04 is not available"
-      unless eval { require Syntax::Keyword::Dynamically;
-                    Syntax::Keyword::Dynamically->VERSION( '0.04' ) };
+use Test2::Require::Module 'Future' => '0.49';
+use Test2::Require::Module 'Future::AsyncAwait' => '0.40';
+use Test2::Require::Module 'Object::Pad' => '0.800';
+use Test2::Require::Module 'Syntax::Keyword::Dynamically';
 
-   Future::AsyncAwait->import;
-   Object::Pad->import;
-   Syntax::Keyword::Dynamically->import;
-
-   diag( "Future::AsyncAwait $Future::AsyncAwait::VERSION, " .
-         "Object::Pad $Object::Pad::VERSION, " .
-         "Syntax::Keyword::Dynamically $Syntax::Keyword::Dynamically::VERSION" );
-}
+use Future::AsyncAwait;
+use Object::Pad;
+use Syntax::Keyword::Dynamically;
 
 # dynamically inside an async method
 {
    my $after_level;
 
    class Logger {
-      has $_level = 1;
+      field $_level = 1;
 
       method level { $_level }
 
@@ -50,9 +37,9 @@ BEGIN {
 
    my $during_level;
    my $f1 = Future->new;
-   my $fret = $logger->verbosely(sub {
+   my $fret = $logger->verbosely(async sub {
       $during_level = $logger->level;
-      return $f1;
+      await $f1;
    });
 
    is( $logger->level, 1, '$logger->level while verbosely suspended' );

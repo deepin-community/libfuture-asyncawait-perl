@@ -1,14 +1,14 @@
 #  You may distribute under the terms of either the GNU General Public License
 #  or the Artistic License (the same terms as Perl itself)
 #
-#  (C) Paul Evans, 2020 -- leonerd@leonerd.org.uk
+#  (C) Paul Evans, 2020-2024 -- leonerd@leonerd.org.uk
 
-package Test::Future::AsyncAwait::Awaitable 0.54;
+package Test::Future::AsyncAwait::Awaitable 0.70;
 
 use v5.14;
 use warnings;
 
-use Test::More;
+use Test2::V0;
 
 use Exporter 'import';
 our @EXPORT_OK = qw(
@@ -20,6 +20,8 @@ our @EXPORT_OK = qw(
 C<Test::Future::AsyncAwait::Awaitable> - conformance tests for awaitable role API
 
 =head1 SYNOPSIS
+
+=for highlighter language=perl
 
    use Test::More;
    use Test::Future::AsyncAwait::Awaitable;
@@ -47,7 +49,7 @@ to check that the implementation is valid.
 
 =head2 test_awaitable
 
-   test_awaitable( $title, %args )
+   test_awaitable( $title, %args );
 
 Runs the API conformance tests. C<$title> is printed in the test description
 output so should be some human-friendly string.
@@ -72,7 +74,7 @@ This argument is optional; if not provided the tests will simply try to invoke
 the regular C<new> constructor on the given class name. For most
 implementations this should be sufficient.
 
-   $f = $new->()
+   $f = $new->();
 
 =item cancel => CODE
 
@@ -81,7 +83,7 @@ the implementation provides cancellation semantics. If this callback is
 provided then an extra subtest suite is run to check the API around
 cancellation.
 
-   $cancel->( $f )
+   $cancel->( $f );
 
 =item force => CODE
 
@@ -93,11 +95,39 @@ perhaps until the next tick of an event loop or similar. In the latter case,
 these implementations should provide a way for the test to wait for this to
 happen.
 
-   $force->( $f )
+   $force->( $f );
 
 =back
 
 =cut
+
+my $FILE = __FILE__;
+
+my %FIXED_MODULE_VERSIONS = (
+   'Future::PP' => '0.50',
+   'Future::XS' => '0.09',
+);
+
+sub _complain_package_version
+{
+   my ( $pkg ) = @_;
+
+   # Drill down to the most base class that isn't Future::_base
+   {
+      no strict 'refs';
+      $pkg = ${"${pkg}::ISA"}[0] while @{"${pkg}::ISA"} and ${"${pkg}::ISA"}[0] ne "Future::_base";
+   }
+
+   my $pkgver = do { no strict 'refs'; ${"${pkg}::VERSION"} };
+   my $wantver = $FIXED_MODULE_VERSIONS{$pkg};
+
+   if( defined $wantver && $pkgver < $wantver ) {
+      diag( "$pkg VERSION is only $pkgver; this might be fixed by updating to version $wantver" );
+   }
+   else {
+      diag( "$pkg VERSION is $pkgver; maybe a later version fixes it?" );
+   }
+}
 
 sub test_awaitable
 {
@@ -114,19 +144,21 @@ sub test_awaitable
       ok(  $f->AWAIT_IS_READY,     'AWAIT_IS_READY true' );
       ok( !$f->AWAIT_IS_CANCELLED, 'AWAIT_IS_CANCELLED false' );
 
-      is_deeply( [ $f->AWAIT_GET ], [ "result" ], 'AWAIT_GET in list context' );
-      is( scalar $f->AWAIT_GET,     "result",     'AWAIT_GET in scalar context' );
-      ok( defined eval { $f->AWAIT_GET; 1 },      'AWAIT_GET in void context' );
+      is( [ $f->AWAIT_GET ], [ "result" ],    'AWAIT_GET in list context' );
+      is( scalar $f->AWAIT_GET,     "result", 'AWAIT_GET in scalar context' );
+      ok( defined eval { $f->AWAIT_GET; 1 },  'AWAIT_GET in void context' );
    };
 
    subtest "$title immediate fail" => sub {
-      ok( my $f = $class->AWAIT_NEW_FAIL( "Oopsie\n" ), "AWAIT_NEW_FAIL yields object" );
+      ok( my $f = $class->AWAIT_NEW_FAIL( "Oopsie" ), "AWAIT_NEW_FAIL yields object" );
 
       ok(  $f->AWAIT_IS_READY,     'AWAIT_IS_READY true' );
       ok( !$f->AWAIT_IS_CANCELLED, 'AWAIT_IS_CANCELLED false' );
 
+      my $LINE = __LINE__+1;
       ok( !defined eval { $f->AWAIT_GET; 1 }, 'AWAIT_GET in void context' );
-      is( $@, "Oopsie\n", 'AWAIT_GET throws exception' );
+      is( $@, "Oopsie at $FILE line $LINE.\n", 'AWAIT_GET throws exception' ) or
+         _complain_package_version( ref $f );
    };
 
    my $fproto = $new->() or BAIL_OUT( "new did not yield an instance" );
@@ -148,12 +180,14 @@ sub test_awaitable
 
       ok( !$f->AWAIT_IS_READY, 'AWAIT_IS_READY false' );
 
-      $f->AWAIT_FAIL( "Late oopsie\n" );
+      $f->AWAIT_FAIL( "Late oopsie" );
 
       ok( $f->AWAIT_IS_READY, 'AWAIT_IS_READY true' );
 
+      my $LINE = __LINE__+1;
       ok( !defined eval { $f->AWAIT_GET; 1 }, 'AWAIT_GET in void context' );
-      is( $@, "Late oopsie\n", 'AWAIT_GET throws exception' );
+      is( $@, "Late oopsie at $FILE line $LINE.\n", 'AWAIT_GET throws exception' ) or
+         _complain_package_version( ref $f );
    };
 
    subtest "$title on-ready" => sub {
@@ -173,7 +207,7 @@ sub test_awaitable
 
       my $f2 = $f1->AWAIT_CLONE;
 
-      $f1->AWAIT_ON_CANCEL( $f2 );
+      $f1->AWAIT_CHAIN_CANCEL( $f2 );
 
       ok( !$f2->AWAIT_IS_CANCELLED, 'AWAIT_IS_CANCELLED false before cancellation' );
 
@@ -181,8 +215,14 @@ sub test_awaitable
 
       ok(  $f2->AWAIT_IS_CANCELLED, 'AWAIT_IS_CANCELLED true after AWAIT_ON_CANCEL propagation' );
 
-      $f1->can( "AWAIT_CHAIN_CANCEL" ) or
-         diag "TODO: Class does not implement AWAIT_CHAIN_CANCEL";
+      my $f3 = $new->() or BAIL_OUT( "new did not yield an instance" );
+
+      my $cancelled;
+      $f3->AWAIT_ON_CANCEL( sub { $cancelled++ } );
+
+      $cancel->( $f3 );
+
+      ok( $cancelled, 'AWAIT_ON_CANCEL invoked callback' );
    };
 }
 

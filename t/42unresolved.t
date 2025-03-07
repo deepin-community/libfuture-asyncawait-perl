@@ -3,8 +3,7 @@
 use v5.14;
 use warnings;
 
-use Test::More;
-use Test::Refcount 0.09 import => [qw( is_refcount refcount )];
+use Test2::V0 0.000148; # is_refcount
 
 use Future;
 
@@ -52,6 +51,54 @@ async sub func
    }
    pass( 'abandoned subsequent does not crash' );
    like( $warnings, qr/^Suspended async sub main::func lost its returning future at $file line \d+/,
+      'warning from attempted resume' );
+}
+
+# abandoned by code itself while not awaiting
+{
+   my $fret;
+   async sub abandon
+   {
+      my ( $f1, $f2 ) = @_;
+      await $f1;
+      undef $fret;
+      await $f2;
+   }
+
+   $fret = abandon( my $f1 = Future->new, my $f2 = Future->new );
+
+   my $warnings = "";
+   {
+      local $SIG{__WARN__} = sub { $warnings .= join "", @_ };
+      $f1->done;
+   }
+   pass( 'abandoned by non-await code does not crash' );
+   like( $warnings, qr/^Suspended async sub main::abandon lost its returning future at $file line \d+/,
+      'warning from attempted resume' );
+
+   $f2->cancel;
+}
+
+# abandoned by code itself that throws
+{
+   my $fret;
+   async sub abandon_and_die
+   {
+      my ( $f1 ) = @_;
+      await $f1;
+      undef $fret;
+      die "Oopsie\n";
+   }
+
+   $fret = abandon_and_die( my $f1 = Future->new );
+
+   my $warnings = "";
+   {
+      local $SIG{__WARN__} = sub { $warnings .= join "", @_ };
+      $f1->done;
+   }
+   pass( 'abandoned by non-await code does not crash' );
+   like( $warnings, qr/^Abandoned async sub main::abandon_and_die failed: Oopsie$/m,
       'warning from attempted resume' );
 }
 

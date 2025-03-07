@@ -3,7 +3,7 @@
 use v5.14;
 use warnings;
 
-use Test::More;
+use Test2::V0;
 
 BEGIN {
    plan skip_all => "Future is not available"
@@ -14,15 +14,14 @@ BEGIN {
    plan skip_all => "feature 'try' is not available"
       unless $] >= 5.033007;
 
-   Future::AsyncAwait->import;
-
-   require feature;
-   feature->import( 'try' );
-   warnings->unimport( 'experimental::try' );
-
    diag( "Future::AsyncAwait $Future::AsyncAwait::VERSION, " .
          "core perl version $^V" );
 }
+
+use Future::AsyncAwait;
+
+use feature 'try';
+no warnings 'experimental::try';
 
 # await in try/catch
 {

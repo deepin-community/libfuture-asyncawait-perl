@@ -1,9 +1,9 @@
 #!/usr/bin/perl
 
-use strict;
+use v5.14;
 use warnings;
 
-use Test::More;
+use Test2::V0;
 
 BEGIN {
    plan skip_all => "Future is not available"
@@ -21,9 +21,9 @@ BEGIN {
          "Syntax::Keyword::Match $Syntax::Keyword::Match::VERSION" );
 }
 
-# await in case
+# await in match/case
 {
-   async sub with_sswitch
+   async sub with_matchcase
    {
       my $f = shift;
 
@@ -40,7 +40,7 @@ BEGIN {
    }
 
    my $f1 = Future->new;
-   my $fret = with_sswitch( $f1 );
+   my $fret = with_matchcase( $f1 );
 
    $f1->done;
    is( scalar $fret->get, "result", '$fret for await in sswitch/case' );

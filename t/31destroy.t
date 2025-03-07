@@ -3,11 +3,9 @@
 use v5.14;
 use warnings;
 
-use Test::More;
+use Test2::V0 0.000148; # is_oneref
 
-# Optional dependency. Not required for correctness testing but useful for
-# debugging when tests fail
-use constant HAVE_TEST_REFCOUNT => eval { require Test::Refcount };
+use Scalar::Util qw( reftype );
 
 use Future;
 
@@ -27,7 +25,8 @@ use Future::AsyncAwait;
    # This code is probably going to be very fragile, so we'll silently skip it
    # if it fails to work
    my $generated_cv;
-   if( $f1->{callbacks} and @{ $f1->{callbacks} } and
+   if( reftype $f1 eq "HASH" and
+       $f1->{callbacks} and @{ $f1->{callbacks} } and
        $f1->{callbacks}[0] and
        ref $f1->{callbacks}[0][1] eq "CODE" ) {
       $generated_cv = $f1->{callbacks}[0][1];
@@ -38,8 +37,7 @@ use Future::AsyncAwait;
 
    $f1->done( bless [], "Destructor" );
 
-   HAVE_TEST_REFCOUNT and
-      Test::Refcount::is_oneref( $f1, '$f1 should have one ref' );
+   is_oneref( $f1, '$f1 should have one ref' );
 
    undef $f1;
 
@@ -48,14 +46,13 @@ use Future::AsyncAwait;
    $fret->get;
    ok( !$destroyed, 'Not destroyed after $fret->get' );
 
-   HAVE_TEST_REFCOUNT and
-      Test::Refcount::is_oneref( $fret, '$fret should have one ref' );
+   is_oneref( $fret, '$fret should have one ref' );
 
    undef $fret;
    ok( $destroyed, 'Destroyed by dropping $fret' );
 
-   HAVE_TEST_REFCOUNT and $generated_cv and
-      Test::Refcount::is_oneref( $generated_cv, '$generated_cv should have one ref' );
+   $generated_cv and
+      is_oneref( $generated_cv, '$generated_cv should have one ref' );
 
    undef $generated_cv;
 }

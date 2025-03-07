@@ -80,6 +80,21 @@ DESCRIPTION
           return await otherfunc();
        }
 
+    Since version 0.69 this module also supports the async keyword on
+    lexical subroutine declarations when running on Perl version 5.18 or
+    later. Note that the my keyword has to come first:
+
+       use v5.18;
+    
+       my async sub lexfunc { ... }
+    
+       my $f = lexfunc(@args);
+
+    Since version 0.70 this module supports using the async keyword to
+    declare named subs in other packages.
+
+       async sub Some::Other::Package::myfunc { ... }
+
  await
 
     The await keyword forms an expression which takes a Future instance as
@@ -304,6 +319,10 @@ SUPPORTED USES
           ...
        }
 
+    Since version 0.55 any exceptions thrown by signature validation
+    (because of too few or too many arguments being passed) are thrown
+    synchronously, and do not result in a failed Future instance.
+
  Cancellation
 
     Cancelled futures cause a suspended async sub to simply stop running.
@@ -456,6 +475,18 @@ WITH OTHER MODULES
           }
        }
 
+ Syntax::Keyword::MultiSub
+
+    As of Future::AsyncAwait version 0.55 and Syntax::Keyword::MultiSub
+    version 0.02 a cross-module integration test asserts that the multi
+    modifier can be applied to async sub.
+
+       use Future::AsyncAwait;
+       use Syntax::Keyword::MultiSub;
+    
+       async multi sub f () { return "nothing"; }
+       async multi sub f ($key) { return await get_thing($key); }
+
 SEE ALSO
 
       * "Awaiting The Future" - TPC in Amsterdam 2017
@@ -549,6 +580,27 @@ KNOWN BUGS
          my @results = await fmap { func( shift ) }
             foreach    => [ ITEMS ],
             concurrent => 5;
+
+      * The default arguments array (@_) is not saved and restored by an
+      await call on perl versions before v5.24. On such older perls, the
+      value seen in the @_ array after an await will not be the same as it
+      was before.
+
+      https://rt.cpan.org/Ticket/Display.html?id=130683
+
+      As a workaround, make sure to unpack the values out of it into
+      regular lexical variables early on, before the the first await. The
+      values of these lexicals will be saved and restored as normal.
+
+         async sub f
+         {
+            my ($vars, $go, @here) = @_;
+            # do not make further use of @_ afterwards
+      
+            await thing();
+      
+            # $vars, $go, @here are all fine for use
+         }
 
 ACKNOWLEDGEMENTS
 

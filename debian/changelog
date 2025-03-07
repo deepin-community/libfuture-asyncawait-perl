@@ -1,3 +1,152 @@
+libfuture-asyncawait-perl (0.70-1) unstable; urgency=medium
+
+  * Import upstream version 0.70.
+  * Bump versioned (build) dpendency on libxs-parse-sublike-perl.
+  * Update years of packaging copyright.
+
+ -- gregor herrmann <gregoa@debian.org>  Mon, 06 Jan 2025 03:45:38 +0100
+
+libfuture-asyncawait-perl (0.69-2) unstable; urgency=medium
+
+  * Bump versioned build and runtime dependency on
+    libxs-parse-sublike-perl.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 22 Sep 2024 18:08:28 +0200
+
+libfuture-asyncawait-perl (0.69-1) unstable; urgency=medium
+
+  * Team upload.
+  * Import upstream version 0.69.
+
+ -- Étienne Mollier <emollier@debian.org>  Sat, 21 Sep 2024 20:58:27 +0200
+
+libfuture-asyncawait-perl (0.68-1) unstable; urgency=medium
+
+  * Import upstream version 0.68.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 01 Sep 2024 17:43:09 +0200
+
+libfuture-asyncawait-perl (0.67-1) unstable; urgency=medium
+
+  * Import upstream version 0.67.
+  * Update years of upstream and packaging copyright.
+  * Update dependencies.
+  * Drop debian/clean, the files are not generated anymore.
+  * Declare compliance with Debian Policy 4.7.0.
+
+ -- gregor herrmann <gregoa@debian.org>  Mon, 26 Aug 2024 18:07:52 +0200
+
+libfuture-asyncawait-perl (0.66-1) unstable; urgency=medium
+
+  * Import upstream version 0.66.
+
+ -- gregor herrmann <gregoa@debian.org>  Wed, 20 Sep 2023 21:41:58 +0200
+
+libfuture-asyncawait-perl (0.65-3) unstable; urgency=medium
+
+  * Remove generated files via debian/clean. (Closes: #1046862)
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 13 Aug 2023 23:24:21 +0200
+
+libfuture-asyncawait-perl (0.65-2) unstable; urgency=medium
+
+  * Remove some test dependencies from Build-Depends which (can) cause
+    dependency cycles.
+
+ -- gregor herrmann <gregoa@debian.org>  Mon, 03 Jul 2023 19:03:29 +0200
+
+libfuture-asyncawait-perl (0.65-1) unstable; urgency=medium
+
+  * Import upstream version 0.64.
+    - Define ABI version 2, which adds pre_suspend and post_resume phase hooks
+
+  * Import upstream version 0.65.
+  * Update (versioned) test and runtime dependencies.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 11 Jun 2023 23:56:34 +0200
+
+libfuture-asyncawait-perl (0.63-1) unstable; urgency=medium
+
+  * Import upstream version 0.63.
+  * Update years of upstream and packaging copyright.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 12 Feb 2023 17:51:53 +0100
+
+libfuture-asyncawait-perl (0.62-1) unstable; urgency=medium
+
+  * Import upstream version 0.62.
+  * Declare compliance with Debian Policy 4.6.2.
+
+ -- gregor herrmann <gregoa@debian.org>  Wed, 21 Dec 2022 23:37:57 +0100
+
+libfuture-asyncawait-perl (0.61-2) unstable; urgency=medium
+
+  * Disable test dependency on libdevel-mat-perl temporarily as long as it
+    doesn't build reliably (cf. #1026046).
+
+ -- gregor herrmann <gregoa@debian.org>  Tue, 13 Dec 2022 19:55:13 +0100
+
+libfuture-asyncawait-perl (0.61-1) unstable; urgency=medium
+
+  * Import upstream version 0.61.
+  * Add test dependencies for additional tests.
+
+ -- gregor herrmann <gregoa@debian.org>  Fri, 25 Nov 2022 17:37:30 +0100
+
+libfuture-asyncawait-perl (0.59-2) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Apply multi-arch hints. + libfuture-asyncawait-perl: Drop Multi-Arch: same.
+
+ -- Jelmer Vernooĳ <jelmer@debian.org>  Sat, 19 Nov 2022 16:42:23 +0000
+
+libfuture-asyncawait-perl (0.59-1) unstable; urgency=medium
+
+  * Import upstream version 0.59.
+
+ -- gregor herrmann <gregoa@debian.org>  Tue, 04 Oct 2022 20:20:32 +0200
+
+libfuture-asyncawait-perl (0.58-2) unstable; urgency=medium
+
+  * Drop test dependency on libtest-memorygrowth-perl.
+    These tests cause more grief than gain.
+  * Declare compliance with Debian Policy 4.6.1.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 10 Sep 2022 21:12:13 +0200
+
+libfuture-asyncawait-perl (0.58-1) unstable; urgency=medium
+
+  * Import upstream version 0.58.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 07 May 2022 17:58:52 +0200
+
+libfuture-asyncawait-perl (0.57-1) unstable; urgency=medium
+
+  * Import upstream version 0.57.
+
+ -- gregor herrmann <gregoa@debian.org>  Sat, 19 Mar 2022 18:11:13 +0100
+
+libfuture-asyncawait-perl (0.56-1) unstable; urgency=medium
+
+  * Import upstream version 0.56.
+  * Update years of upstream and packaging copyright.
+  * Bump versioned (build) dependency on libfuture-perl.
+
+ -- gregor herrmann <gregoa@debian.org>  Sun, 30 Jan 2022 17:17:41 +0100
+
+libfuture-asyncawait-perl (0.55-1) unstable; urgency=medium
+
+  * Team upload.
+
+  [ upstream ]
+  * new release
+
+  [ Jonas Smedegaard ]
+  * tighten (build-)dependency on libxs-parse-sublike-perl
+  * build-dpend on libtest-fatal-perl
+
+ -- Jonas Smedegaard <dr@jones.dk>  Thu, 16 Dec 2021 20:49:56 +0100
+
 libfuture-asyncawait-perl (0.54-1) unstable; urgency=medium
 
   * Import upstream version 0.54.
